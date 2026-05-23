@@ -1,0 +1,18 @@
+       # Environment & credentials
+       .env
+
+       # IntelliJ IDEA
+       .idea/
+       *.iml
+       out/
+
+       # VS Code
+       .vscode/
+
+       # Compiled Java
+       *.class
+       *.jar
+
+       # OS files
+       .DS_Store
+       Thumbs.db
