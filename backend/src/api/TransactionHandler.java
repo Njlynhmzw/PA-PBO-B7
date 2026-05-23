@@ -1,5 +1,4 @@
 package api;
-
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import models.Member;
@@ -7,59 +6,30 @@ import models.Transaction;
 import models.TransactionItem;
 import service.MemberService;
 import service.TransactionService;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * TransactionHandler — menangani semua request ke /api/transactions
- *
- * GET  /api/transactions       → semua transaksi
- * GET  /api/transactions/{id}  → detail satu transaksi
- * POST /api/transactions       → buat transaksi baru
- *
- * Body POST contoh:
- * {
- *   "memberPhone": "08111111111",
- *   "items": [
- *     { "productId": "PRD-0001", "qty": 2 },
- *     { "productId": "PRD-0003", "qty": 1 }
- *   ]
- * }
- */
 public class TransactionHandler implements HttpHandler {
-
     private static final String PREFIX = "/api/transactions";
-
     private final TransactionService transactionService;
     private final MemberService memberService;
-
     public TransactionHandler(TransactionService ts, MemberService ms) {
         this.transactionService = ts;
         this.memberService = ms;
     }
-
     @Override
     public void handle(HttpExchange ex) throws IOException {
-
         ApiServer.addCorsHeaders(ex);
-
         if (ApiServer.handlePreflight(ex)) {
             return;
         }
-
         String method = ex.getRequestMethod().toUpperCase();
         String id = ApiServer.extractId(ex, PREFIX);
-
         try {
-
             switch (method) {
-
                 case "GET" -> handleGet(ex, id);
-
                 case "POST" -> handlePost(ex);
-
                 default ->
                         ApiServer.sendResponse(
                                 ex,
@@ -67,9 +37,7 @@ public class TransactionHandler implements HttpHandler {
                                 "{\"error\":\"Method not allowed\"}"
                         );
             }
-
         } catch (Exception e) {
-
             ApiServer.sendResponse(
                     ex,
                     500,
@@ -79,38 +47,27 @@ public class TransactionHandler implements HttpHandler {
             );
         }
     }
-
     // =========================================================
     // GET
     // =========================================================
-
     private void handleGet(HttpExchange ex, String id) throws IOException {
-
         if (id == null) {
-
             List<Transaction> list = transactionService.semuaTransaksi();
-
             ApiServer.sendResponse(
                     ex,
                     200,
                     transactionsToJson(list)
             );
-
         } else {
-
             Optional<Transaction> opt =
                     transactionService.cariById(id);
-
             if (opt.isPresent()) {
-
                 ApiServer.sendResponse(
                         ex,
                         200,
                         transactionToJson(opt.get())
                 );
-
             } else {
-
                 ApiServer.sendResponse(
                         ex,
                         404,
@@ -119,63 +76,44 @@ public class TransactionHandler implements HttpHandler {
             }
         }
     }
-
     // =========================================================
     // POST
     // =========================================================
-
     private void handlePost(HttpExchange ex) throws IOException {
-
         String body = ApiServer.readBody(ex);
-
         try {
-
-            // Cari member (opsional)
             String memberPhone =
                     JsonParser.getStringOrNull(body, "memberPhone");
-
             Member member = null;
-
             if (memberPhone != null && !memberPhone.isBlank()) {
-
                 member = memberService
                         .cariByPhone(memberPhone)
                         .orElse(null);
             }
-
             // Buat transaksi
             Transaction transaksi =
                     transactionService.buatTransaksi(member);
-
             // Parse items
             String itemsJson =
                     JsonParser.getArray(body, "items");
-
             String[] itemEntries =
                     splitJsonArray(itemsJson);
-
             StringBuilder errors = new StringBuilder();
-
             for (String itemJson : itemEntries) {
-
                 String productId =
                         JsonParser.getString(itemJson, "productId");
-
                 int qty =
                         JsonParser.getInt(itemJson, "qty");
-
                 String err =
                         transactionService.tambahItem(
                                 transaksi,
                                 productId,
                                 qty
                         );
-
                 if (err != null) {
                     errors.append(err).append("; ");
                 }
             }
-
             // Tidak ada item valid
             if (transaksi.getItems().isEmpty()) {
 
@@ -189,27 +127,21 @@ public class TransactionHandler implements HttpHandler {
 
                 return;
             }
-
             // Simpan transaksi
             transactionService.simpanTransaksi(transaksi);
-
             // Catat transaksi member
             if (member != null) {
-
                 memberService.catatTransaksi(
                         member,
                         transaksi.getTotalAfterDiscount()
                 );
             }
-
             ApiServer.sendResponse(
                     ex,
                     201,
                     transactionToJson(transaksi)
             );
-
         } catch (Exception e) {
-
             ApiServer.sendResponse(
                     ex,
                     400,
@@ -219,11 +151,9 @@ public class TransactionHandler implements HttpHandler {
             );
         }
     }
-
     // =========================================================
     // JSON SERIALIZATION
     // =========================================================
-
     private String transactionsToJson(List<Transaction> list) {
 
         StringBuilder sb = new StringBuilder("[");
@@ -236,123 +166,81 @@ public class TransactionHandler implements HttpHandler {
                 sb.append(",");
             }
         }
-
         sb.append("]");
-
         return sb.toString();
     }
-
     private String transactionToJson(Transaction t) {
-
         StringBuilder items = new StringBuilder("[");
-
         List<TransactionItem> itemList = t.getItems();
-
         for (int i = 0; i < itemList.size(); i++) {
-
             TransactionItem item = itemList.get(i);
-
             items.append(String.format("""
-                {
-                  "productId": "%s",
-                  "productName": "%s",
-                  "qty": %d,
-                  "pricePerItem": %.0f,
-                  "subtotal": %.0f
-                }""",
-
-                    item.getProduct().getId(),
-
-                    ProductHandler.escapeJson(
-                            item.getProduct().getName()
-                    ),
-
+            {
+              "productId": "%s",
+              "productName": "%s",
+              "qty": %d,
+              "pricePerItem": %.0f,
+              "subtotal": %.0f
+            }""",
+                    item.getProductId(),
+                    ProductHandler.escapeJson(item.getProductName()),
                     item.getQty(),
-
                     item.getPriceAtTime(),
-
                     item.getSubtotal()
             ));
-
-            if (i < itemList.size() - 1) {
-                items.append(",");
-            }
+            if (i < itemList.size() - 1) items.append(",");
         }
-
         items.append("]");
-
-        String memberJson =
-                t.getMember() == null
-                        ? "null"
-                        : MemberHandler.memberToJson(t.getMember());
-
+        String memberJson = t.getMember() == null
+                ? "null"
+                : MemberHandler.memberToJson(t.getMember());
         return String.format("""
-            {
-              "id": "%s",
-              "date": "%s",
-              "member": %s,
-              "items": %s,
-              "subtotal": %.0f,
-              "memberDiscount": %.0f,
-              "total": %.0f
-            }""",
-
+        {
+          "id": "%s",
+          "date": "%s",
+          "member": %s,
+          "items": %s,
+          "subtotal": %.0f,
+          "memberDiscount": %.0f,
+          "total": %.0f
+        }""",
                 t.getTransactionId(),
-
-                ProductHandler.escapeJson(
-                        t.getFormattedDate()
-                ),
-
+                ProductHandler.escapeJson(t.getFormattedDate()),
                 memberJson,
-
                 items.toString(),
-
                 t.getTotalBeforeDiscount(),
-
                 t.getTotalSavings(),
-
                 t.getTotalAfterDiscount()
         );
     }
-
     // =========================================================
     // SPLIT JSON ARRAY
     // =========================================================
-
     private String[] splitJsonArray(String arrayJson) {
-
         if (arrayJson == null
                 || arrayJson.isBlank()
                 || arrayJson.equals("[]")) {
-
             return new String[0];
         }
-
         String inner = arrayJson.trim();
-
-        // Hapus [
+        // Hapus
         if (inner.startsWith("[")) {
             inner = inner.substring(1);
         }
-
         // Hapus ]
         if (inner.endsWith("]")) {
             inner = inner.substring(0, inner.length() - 1);
         }
-
         inner = inner.trim();
 
         if (inner.isEmpty()) {
             return new String[0];
         }
-
         // Split berdasarkan },{
         String[] parts =
                 inner.split("\\},\\s*\\{");
-
         // Kembalikan { dan }
         for (int i = 0; i < parts.length; i++) {
-
             if (!parts[i].startsWith("{")) {
                 parts[i] = "{" + parts[i];
             }
@@ -361,7 +249,6 @@ public class TransactionHandler implements HttpHandler {
                 parts[i] = parts[i] + "}";
             }
         }
-
         return parts;
     }
 }

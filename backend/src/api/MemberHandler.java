@@ -1,40 +1,24 @@
 package api;
-
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import models.Member;
 import service.MemberService;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * MemberHandler — menangani semua request ke /api/members
- *
- * GET    /api/members           → list semua member
- * GET    /api/members/{id}      → detail satu member
- * POST   /api/members           → daftarkan member baru
- * PUT    /api/members/{id}      → update member
- * DELETE /api/members/{id}      → hapus member
- */
 public class MemberHandler implements HttpHandler {
-
     private static final String PREFIX = "/api/members";
     private final MemberService memberService;
-
     public MemberHandler(MemberService memberService) {
         this.memberService = memberService;
     }
-
     @Override
     public void handle(HttpExchange ex) throws IOException {
         ApiServer.addCorsHeaders(ex);
         if (ApiServer.handlePreflight(ex)) return;
-
         String method = ex.getRequestMethod().toUpperCase();
         String id     = ApiServer.extractId(ex, PREFIX);
-
         try {
             switch (method) {
                 case "GET"    -> handleGet(ex, id);
@@ -47,9 +31,7 @@ public class MemberHandler implements HttpHandler {
             ApiServer.sendResponse(ex, 500, "{\"error\":\"" + ProductHandler.escapeJson(e.getMessage()) + "\"}");
         }
     }
-
-    // ── GET ──────────────────────────────────────────────────────────
-
+    // ── GET
     private void handleGet(HttpExchange ex, String id) throws IOException {
         if (id == null) {
             List<Member> list = memberService.semuaMember();
@@ -69,9 +51,7 @@ public class MemberHandler implements HttpHandler {
             }
         }
     }
-
-    // ── POST ─────────────────────────────────────────────────────────
-
+    // ── POST
     private void handlePost(HttpExchange ex) throws IOException {
         String body = ApiServer.readBody(ex);
         try {
@@ -79,7 +59,6 @@ public class MemberHandler implements HttpHandler {
             String phone = JsonParser.getString(body, "phone");
             String email = JsonParser.getString(body, "email");
             String tier  = JsonParser.getString(body, "tier");
-
             Member m = memberService.daftarMember(nama, phone, email, tier);
             ApiServer.sendResponse(ex, 201, memberToJson(m));
         } catch (IllegalArgumentException e) {
@@ -89,9 +68,7 @@ public class MemberHandler implements HttpHandler {
             ApiServer.sendResponse(ex, 400, "{\"error\":\"" + ProductHandler.escapeJson(e.getMessage()) + "\"}");
         }
     }
-
-    // ── PUT ──────────────────────────────────────────────────────────
-
+    // ── PUT
     private void handlePut(HttpExchange ex, String id) throws IOException {
         if (id == null) { ApiServer.sendResponse(ex, 400, "{\"error\":\"ID diperlukan\"}"); return; }
         String body = ApiServer.readBody(ex);
@@ -110,9 +87,7 @@ public class MemberHandler implements HttpHandler {
             ApiServer.sendResponse(ex, 400, "{\"error\":\"" + ProductHandler.escapeJson(e.getMessage()) + "\"}");
         }
     }
-
-    // ── DELETE ───────────────────────────────────────────────────────
-
+    // ── DELETE
     private void handleDelete(HttpExchange ex, String id) throws IOException {
         if (id == null) { ApiServer.sendResponse(ex, 400, "{\"error\":\"ID diperlukan\"}"); return; }
         boolean ok = memberService.hapusMember(id);
@@ -122,9 +97,7 @@ public class MemberHandler implements HttpHandler {
             ApiServer.sendResponse(ex, 404, "{\"error\":\"Member tidak ditemukan\"}");
         }
     }
-
-    // ── Serialisasi JSON manual ───────────────────────────────────────
-
+    // ── Serialisasi JSON manual
     private String membersToJson(List<Member> list) {
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < list.size(); i++) {
@@ -134,7 +107,6 @@ public class MemberHandler implements HttpHandler {
         sb.append("]");
         return sb.toString();
     }
-
     static String memberToJson(Member m) {
         return String.format("""
             {

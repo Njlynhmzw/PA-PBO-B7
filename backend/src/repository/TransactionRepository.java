@@ -1,31 +1,23 @@
 package repository;
-
 import db.DatabaseConfig;
 import models.*;
-
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 public class TransactionRepository {
-
-    // Inject repository agar tidak membuat objek berulang-ulang di dalam method/loop
     private final ProductRepository productRepository;
     private final MemberRepository memberRepository;
-
     public TransactionRepository(ProductRepository productRepository, MemberRepository memberRepository) {
         this.productRepository = productRepository;
         this.memberRepository = memberRepository;
     }
-
     private Connection conn() { return DatabaseConfig.getConnection(); }
-
     private String generateId() {
         String updateSql = "UPDATE counters SET value = value + 1 WHERE name = 'transaction'";
         String selectSql = "SELECT value FROM counters WHERE name = 'transaction'";
 
-        // Membungkus koneksi agar otomatis tertutup dan tidak bocor (Resource Leak fix)
         try (Connection conn = conn()) {
             conn.setAutoCommit(false);
             try (PreparedStatement psUpdate = conn.prepareStatement(updateSql);
@@ -48,27 +40,22 @@ public class TransactionRepository {
         }
         return null;
     }
-
     public void save(Transaction transaction) {
         if (transaction.getTransactionId() == null || transaction.getTransactionId().isBlank()) {
             transaction.setTransactionId(generateId());
         }
-
         String sqlTrx = """
             INSERT INTO transactions
                 (id, member_id, subtotal, member_discount, total)
             VALUES (?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE id = id
             """;
-
         String sqlItem = """
             INSERT INTO transaction_items
                 (transaction_id, product_id, product_name, qty, price_per_item, subtotal)
             VALUES (?, ?, ?, ?, ?, ?)
             """;
 
-        // Transaksi Atomik: Memastikan tabel transactions dan transaction_items tersimpan bersamaan.
-        // Jika tabel items gagal, maka tabel transactions akan di-rollback.
         try (Connection conn = conn()) {
             conn.setAutoCommit(false);
             try (PreparedStatement psTrx = conn.prepareStatement(sqlTrx);
@@ -82,7 +69,6 @@ public class TransactionRepository {
                 psTrx.setDouble(4, transaction.getTotalSavings());
                 psTrx.setDouble(5, transaction.getTotalAfterDiscount());
                 psTrx.executeUpdate();
-
                 // 2. Simpan Item Transaksi
                 for (TransactionItem item : transaction.getItems()) {
                     psItem.setString(1, transaction.getTransactionId());
@@ -94,8 +80,7 @@ public class TransactionRepository {
                     psItem.addBatch();
                 }
                 psItem.executeBatch();
-
-                conn.commit(); // Commit semua perubahan sekaligus
+                conn.commit();
             } catch (SQLException e) {
                 conn.rollback();
                 throw e;
@@ -104,15 +89,12 @@ public class TransactionRepository {
             throw new RuntimeException("Gagal menyimpan transaksi: " + e.getMessage(), e);
         }
     }
-
     public List<Transaction> findAll() {
         String sql = "SELECT * FROM transactions ORDER BY created_at DESC";
         List<Transaction> result = new ArrayList<>();
-
         try (Connection conn = conn();
              Statement st = conn.createStatement();
              ResultSet rs  = st.executeQuery(sql)) {
-
             while (rs.next()) {
                 Transaction t = mapRow(rs);
                 loadItems(t);
@@ -123,13 +105,10 @@ public class TransactionRepository {
         }
         return result;
     }
-
     public Optional<Transaction> findById(String transactionId) {
         String sql = "SELECT * FROM transactions WHERE id = ?";
-
         try (Connection conn = conn();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-
             ps.setString(1, transactionId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -143,7 +122,6 @@ public class TransactionRepository {
         }
         return Optional.empty();
     }
-
     public int count() {
         String sql = "SELECT COUNT(*) FROM transactions";
         try (Connection conn = conn();
@@ -154,15 +132,13 @@ public class TransactionRepository {
         } catch (SQLException e) { return 0; }
         return 0;
     }
-
     public boolean isEmpty() { return count() == 0; }
-
     private Transaction mapRow(ResultSet rs) throws SQLException {
         String trxId    = rs.getString("id");
         String memberId = rs.getString("member_id");
-        double subtotal = rs.getDouble("subtotal");         // total sebelum diskon
-        double discount = rs.getDouble("member_discount");  // total hemat
-        double total    = rs.getDouble("total");            // total bayar
+        double subtotal = rs.getDouble("subtotal");
+        double discount = rs.getDouble("member_discount");
+        double total    = rs.getDouble("total");
 
         Transaction t = new Transaction();
         t.setTransactionId(trxId);
@@ -177,40 +153,62 @@ public class TransactionRepository {
 
     private void loadItems(Transaction t) {
         String sql = """
-            SELECT ti.*, p.category, p.jenis, p.has_discount, p.discount_percent,
-                   p.price, p.stock, p.size
-            FROM transaction_items ti
-            JOIN products p ON ti.product_id = p.id
-            WHERE ti.transaction_id = ?
-            ORDER BY ti.id ASC
-            """;
-
-        try (Connection conn = conn();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
+        SELECT id, product_id, product_name,
+               qty, price_per_item, subtotal
+        FROM transaction_items
+        WHERE transaction_id = ?
+        ORDER BY id ASC
+        """;
+        try (
+                Connection conn = conn();
+                PreparedStatement ps = conn.prepareStatement(sql)
+        ) {
             ps.setString(1, t.getTransactionId());
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    // Mencegah pembuatan new ProductRepository() di dalam loop (Instruksi 2)
-                    Optional<Product> optProd = productRepository.findById(rs.getString("product_id"));
-
+                    String productId =
+                            rs.getString("product_id");
+                    String productName =
+                            rs.getString("product_name");
+                    int qty =
+                            rs.getInt("qty");
+                    double pricePerItem =
+                            rs.getDouble("price_per_item");
+                    double subtotalItem =
+                            rs.getDouble("subtotal");
+                    double discounted =
+                            qty > 0
+                                    ? subtotalItem / qty
+                                    : pricePerItem;
+                    Optional<Product> optProd =
+                            productRepository.findById(productId);
+                    TransactionItem item;
                     if (optProd.isPresent()) {
-                        int     qty           = rs.getInt("qty");
-                        double  pricePerItem  = rs.getDouble("price_per_item");
-                        double  subtotal      = rs.getDouble("subtotal");
-
-                        double discountedPrice = subtotal / qty;
-
-                        // Menggunakan Constructor Overloading historis
-                        TransactionItem item = new TransactionItem(
-                                optProd.get(), qty, pricePerItem, discountedPrice
+                        item = new TransactionItem(
+                                optProd.get(),
+                                qty,
+                                pricePerItem,
+                                discounted
                         );
-                        t.addItemFromDb(item);
+                    } else {
+                        item = new TransactionItem(
+                                productId,
+                                productName,
+                                qty,
+                                pricePerItem,
+                                discounted
+                        );
                     }
+                    t.addItemFromDb(item);
                 }
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Gagal memuat item transaksi: " + e.getMessage(), e);
+            throw new RuntimeException(
+                    "Gagal memuat item transaksi: "
+                            + e.getMessage(),
+                    e
+            );
         }
     }
 }
+

@@ -1,22 +1,17 @@
 package models;
 
 public class Member {
-
     public enum Tier {
         REGULAR("Regular", 10.0),
         PLUS("Plus", 15.0);
-
         private final String label;
         private final double discountRate;
-
         Tier(String label, double discountRate) {
             this.label        = label;
             this.discountRate = discountRate;
         }
         public String getLabel()        { return label; }
-        public double getDiscountRate() { return discountRate; }
     }
-
     private String memberId;
     private String name;
     private String phone;
@@ -24,7 +19,6 @@ public class Member {
     private Tier   tier;
     private int    totalTransaksi;
     private double totalBelanja;
-
     public Member(String nama, String phone, String email, Tier tier) {
         this.memberId       = null;
         this.name           = nama;
@@ -34,7 +28,6 @@ public class Member {
         this.totalTransaksi = 0;
         this.totalBelanja   = 0.0;
     }
-
     public Member(String memberId, String name, String phone, String email,
                   Tier tier, int totalTransaksi, double totalBelanja) {
         this.memberId       = memberId;
@@ -45,7 +38,6 @@ public class Member {
         this.totalTransaksi = totalTransaksi;
         this.totalBelanja   = totalBelanja;
     }
-
     public void tambahTransaksi(double amount) {
         this.totalTransaksi++;
         this.totalBelanja += amount;
@@ -54,7 +46,6 @@ public class Member {
             System.out.println("🎉 Selamat! " + name + " telah upgrade ke Tier PLUS!");
         }
     }
-
     public String getMemberId()              { return memberId; }
     public void   setMemberId(String id)     { this.memberId = id; }
     public String getName()                  { return name; }

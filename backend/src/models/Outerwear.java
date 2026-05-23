@@ -9,7 +9,6 @@ public class Outerwear extends Product {
         JenisOuterwear(String label) { this.label = label; }
         public String getLabel() { return label; }
     }
-
     private JenisOuterwear jenisOuterwear;
 
     public Outerwear(String name, double price, int stock, String size,
@@ -17,7 +16,6 @@ public class Outerwear extends Product {
         super(name, price, stock, size, hasDiscount, discountPercent);
         this.jenisOuterwear = jenis;
     }
-
     @Override public String getCategory()   { return "Outerwear"; }
     @Override public String getJenis()      { return jenisOuterwear.getLabel(); }
 }

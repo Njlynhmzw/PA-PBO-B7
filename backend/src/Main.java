@@ -1,5 +1,4 @@
 import api.ApiServer;
-import api.DataSeeder;
 
 import repository.MemberRepository;
 import repository.ProductRepository;
@@ -22,8 +21,6 @@ public class Main {
         ProductService     productService     = new ProductService(productRepository);
         MemberService      memberService      = new MemberService(memberRepository);
         TransactionService transactionService = new TransactionService(transactionRepository, productRepository);
-
-        DataSeeder.seed(productService, memberService);
 
         ApiServer server = new ApiServer(productService, memberService, transactionService);
         server.start();

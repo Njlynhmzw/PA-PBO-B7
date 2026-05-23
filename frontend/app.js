@@ -45,14 +45,51 @@ function escHtml(str) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// TOAST
+// TOAST — Enhanced dengan icon, subtitle, progress bar & stack
 // ══════════════════════════════════════════════════════════════════
-let toastTimer = null;
-function showToast(msg, type = "success") {
-  const el = document.getElementById("toast-container");
-  el.innerHTML = `<div class="toast toast-${type}">${escHtml(msg)}</div>`;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.innerHTML = ""; }, 3000);
+const TOAST_META = {
+  success: { icon: "✓", label: "Berhasil"   },
+  error:   { icon: "✕", label: "Gagal"      },
+  warning: { icon: "⚠", label: "Perhatian"  },
+  info:    { icon: "ℹ", label: "Info"       },
+};
+
+function showToast(msg, type = "success", subtitle = "") {
+  const wrap = document.getElementById("toast-container");
+  if (!wrap) return;
+
+  const id   = "toast-" + Date.now() + Math.random().toString(36).slice(2);
+  const meta = TOAST_META[type] ?? TOAST_META.success;
+
+  const item = document.createElement("div");
+  item.id        = id;
+  item.className = `toast-item toast-${type}`;
+  item.setAttribute("role", "alert");
+  item.innerHTML = `
+    <div class="toast-icon-circle" aria-hidden="true">${meta.icon}</div>
+    <div class="toast-body">
+      <p class="toast-title">${escHtml(msg)}</p>
+      ${subtitle ? `<p class="toast-sub">${escHtml(subtitle)}</p>` : ""}
+    </div>
+    <button class="toast-x" aria-label="Tutup notifikasi" data-toast-id="${id}">×</button>
+    <div class="toast-bar" aria-hidden="true"></div>`;
+
+  wrap.appendChild(item);
+
+  // Tombol close
+  item.querySelector(".toast-x").addEventListener("click", () => removeToast(id));
+
+  // Auto dismiss
+  const timer = setTimeout(() => removeToast(id), 3600);
+  item._toastTimer = timer;
+}
+
+function removeToast(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  clearTimeout(el._toastTimer);
+  el.classList.add("toast-hiding");
+  setTimeout(() => el.remove(), 320);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -143,7 +180,6 @@ function renderShell() {
           </div>
         </div>
 
-        <!-- ✅ Tombol Transaksi Baru — menggantikan badge ADMIN -->
         <button class="btn btn-primary header-trx-btn" id="header-btn-trx">
           + TRANSAKSI BARU
         </button>
@@ -161,9 +197,10 @@ function renderShell() {
     <main class="main" id="main-content"></main>
 
     <div id="modal-container"></div>
-    <div id="toast-container"></div>`;
 
-  // Tab events
+    <!-- Toast container — dirender di luar semua overlay -->
+    <div id="toast-container" role="region" aria-live="polite" aria-label="Notifikasi"></div>`;
+
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       state.activeTab = btn.dataset.tab;
@@ -171,7 +208,6 @@ function renderShell() {
     });
   });
 
-  // ✅ Tombol header selalu bisa membuka transaksi dari mana saja
   document.getElementById("header-btn-trx")
     .addEventListener("click", openTransactionModal);
 }
@@ -185,10 +221,9 @@ function renderApp() {
 
   if (!document.getElementById("main-content")) renderShell();
 
-  // Sync tombol header (selalu ada setelah shell)
+  // Re-bind header button setelah re-render
   const headerBtn = document.getElementById("header-btn-trx");
   if (headerBtn) {
-    // Re-bind untuk memastikan listener aktif setelah re-render
     headerBtn.replaceWith(headerBtn.cloneNode(true));
     document.getElementById("header-btn-trx")
       .addEventListener("click", openTransactionModal);
@@ -262,585 +297,236 @@ function renderDashboard() {
 }
 function bindDashboard() {}
 
-/* ═══════════════════════════════════════════════════════════════
-   PRODUCTS TAB
-   ═══════════════════════════════════════════════════════════════ */
-
+// ══════════════════════════════════════════════════════════════════
+// TAB: PRODUK
+// ══════════════════════════════════════════════════════════════════
 function productCardHTML(p) {
   const final = getFinalPrice(p);
 
   return `
     <div class="product-card">
       <div class="product-card-body">
-
         <div class="product-top">
-          <span class="product-emoji">
-            ${CATEGORY_ICONS[p.category] ?? "📦"}
-          </span>
-
-          <div class="product-badges" style="display:flex; gap:6px;">
-            ${p.jenis
-              ? `<span class="badge badge-blue">${escHtml(p.jenis)}</span>`
-              : ""}
-
-            ${p.size
-              ? `<span class="badge badge-green">${escHtml(p.size)}</span>`
-              : ""}
-
-            ${p.hasDiscount
-              ? `<span class="badge badge-orange">-${p.discountPercent}%</span>`
-              : ""}
+          <span class="product-emoji">${CATEGORY_ICONS[p.category] ?? "📦"}</span>
+          <div class="product-badges" style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+            ${p.jenis ? `<span class="badge badge-blue">${escHtml(p.jenis)}</span>` : ""}
+            ${p.hasDiscount ? `<span class="badge badge-orange">-${p.discountPercent}%</span>` : ""}
           </div>
         </div>
-
-        <p class="product-id">
-          ${String(p.id).padStart(3, "0")}
-        </p>
-
-        <p class="product-name">
-          ${escHtml(
-            p.name.replace(/^McLaren\s+/i, "")
-          ).toUpperCase()}
-        </p>
-
-        <p class="product-meta">
-          ${escHtml(p.category)}
-          ·
-          Size: ${escHtml(p.size ?? "-")}
-        </p>
-
-        <div style="margin-top:12px; min-height:45px;">
-          ${p.hasDiscount
-            ? `<p class="product-orig">${formatRp(p.price)}</p>`
-            : `<p class="product-orig" style="visibility:hidden;">-</p>`
-          }
-
-          <p class="product-price">
-            ${formatRp(final)}
-          </p>
-        </div>
-
-        <p class="product-stock">
-          Stok: <span>${p.stock}</span>
-        </p>
+        <p class="product-id">${String(p.id).padStart(3, "0")}</p>
+        <h3 class="product-name">${escHtml(p.name)}</h3>
+        <p class="product-meta">${escHtml(p.category)} · Size: ${escHtml(p.size ?? "-")}</p>
+        ${p.hasDiscount
+          ? `<p class="product-orig">${formatRp(p.price)}</p>`
+          : `<p class="product-orig" style="visibility:hidden;">-</p>`}
+        <p class="product-price">${formatRp(final)}</p>
+        <p class="product-stock">Stok: <span>${p.stock}</span></p>
       </div>
-
       <div class="product-card-footer">
-        <button
-          type="button"
-          class="btn btn-secondary btn-sm"
-          data-action="edit-product"
-          data-id="${p.id}"
-        >
-          EDIT
-        </button>
-
-        <button
-          type="button"
-          class="btn btn-danger btn-sm"
-          data-action="delete-product"
-          data-id="${p.id}"
-        >
-          HAPUS
-        </button>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="edit-product" data-id="${p.id}">Edit</button>
+        <button type="button" class="btn btn-danger btn-sm" data-action="delete-product" data-id="${p.id}">Hapus</button>
       </div>
     </div>
   `;
 }
 
-/* ───────────────────────────────────────────────────────────── */
-
 function renderProducts() {
-
-  const filtered =
-    state.filterKat === "Semua"
-      ? state.products
-      : state.products.filter(
-          p => p.category === state.filterKat
-        );
+  const filtered = state.filterKat === "Semua"
+    ? state.products
+    : state.products.filter(p => p.category === state.filterKat);
 
   return `
     <section>
-
       <div class="page-header">
         <h2 class="page-title">PRODUK</h2>
-
-        <button
-          class="btn btn-primary"
-          id="btn-add-product"
-        >
-          + TAMBAH PRODUK
-        </button>
+        <button class="btn btn-primary" id="btn-add-product">+ TAMBAH PRODUK</button>
       </div>
 
       <div class="filter-bar">
-
-        <button
-          class="filter-btn ${
-            state.filterKat === "Semua"
-              ? "active"
-              : ""
-          }"
-          data-filter="Semua"
-        >
-          SEMUA
-        </button>
-
+        <button class="filter-btn ${state.filterKat === "Semua" ? "active" : ""}" data-filter="Semua">SEMUA</button>
         ${KATEGORI_LIST.map(k => `
-          <button
-            class="filter-btn ${
-              state.filterKat === k
-                ? "active"
-                : ""
-            }"
-            data-filter="${k}"
-          >
-            ${k.toUpperCase()}
-          </button>
+          <button class="filter-btn ${state.filterKat === k ? "active" : ""}" data-filter="${k}">${k.toUpperCase()}</button>
         `).join("")}
-
       </div>
 
       ${filtered.length === 0
-        ? `
-          <p class="empty">
-            Belum ada produk dalam kategori ini.
-          </p>
-        `
-        : `
-          <div class="grid-cards">
-            ${filtered.map(productCardHTML).join("")}
-          </div>
-        `
-      }
-
-    </section>
-  `;
+        ? `<p class="empty">Belum ada produk dalam kategori ini.</p>`
+        : `<div class="grid-cards">${filtered.map(productCardHTML).join("")}</div>`}
+    </section>`;
 }
-
-/* ───────────────────────────────────────────────────────────── */
 
 function bindProducts() {
+  document.getElementById("btn-add-product")?.addEventListener("click", () => openProductModal(null));
 
-  document
-    .getElementById("btn-add-product")
-    ?.addEventListener("click", () => {
-      openProductModal(null);
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.filterKat = btn.dataset.filter;
+      renderApp();
     });
+  });
 
-  document
-    .querySelectorAll(".filter-btn")
-    .forEach(btn => {
-
-      btn.addEventListener("click", () => {
-
-        state.filterKat = btn.dataset.filter;
-
-        renderApp();
-      });
+  document.querySelectorAll("[data-action='edit-product']").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const p = state.products.find(x => String(x.id) === btn.dataset.id);
+      if (p) openProductModal(p);
     });
+  });
 
-  document
-    .querySelectorAll("[data-action='edit-product']")
-    .forEach(btn => {
-
-      btn.addEventListener("click", () => {
-
-        const p = state.products.find(
-          x => String(x.id) === btn.dataset.id
-        );
-
-        if (p) openProductModal(p);
-      });
-    });
-
-  document
-    .querySelectorAll("[data-action='delete-product']")
-    .forEach(btn => {
-
-      btn.addEventListener("click", () => {
-        handleDeleteProduct(btn.dataset.id);
-      });
-    });
+  document.querySelectorAll("[data-action='delete-product']").forEach(btn => {
+    btn.addEventListener("click", () => handleDeleteProduct(btn.dataset.id));
+  });
 }
 
-/* ───────────────────────────────────────────────────────────── */
-
+// ── Product Form Modal ────────────────────────────────────────────
 function productFormHTML(p) {
-
   const isEdit = !!p;
-
-  const cats  = KATEGORI_LIST;
-
-  const cat   = p?.category ?? cats[0];
-
-  const jenis = JENIS_MAP[cat] ?? [];
+  const cats   = KATEGORI_LIST;
+  const cat    = p?.category ?? cats[0];
+  const jenis  = JENIS_MAP[cat] ?? [];
 
   return `
+    <div id="form-error" class="form-error" style="display:none"></div>
 
-    <div
-      id="form-error"
-      class="form-error"
-      style="display:none"
-    ></div>
-
-    <!-- NAMA -->
     <div class="form-group">
-      <label class="form-label">
-        Nama Produk *
-      </label>
-
-      <input
-        class="form-input"
-        id="f-name"
-        type="text"
-        value="${escHtml(p?.name ?? "")}"
-        placeholder="Nama produk"
-      >
+      <label class="form-label">Nama Produk *</label>
+      <input class="form-input" id="f-name" type="text" value="${escHtml(p?.name ?? "")}" placeholder="Nama produk">
     </div>
 
-    <!-- KATEGORI -->
     <div class="form-group">
-      <label class="form-label">
-        Kategori
-      </label>
-
-      <select
-        class="form-select"
-        id="f-category"
-      >
-        ${cats.map(c => `
-          <option
-            value="${c}"
-            ${c === cat ? "selected" : ""}
-          >
-            ${c}
-          </option>
-        `).join("")}
+      <label class="form-label">Kategori</label>
+      <select class="form-select" id="f-category">
+        ${cats.map(c => `<option value="${c}" ${c === cat ? "selected" : ""}>${c}</option>`).join("")}
       </select>
     </div>
 
-    <!-- JENIS -->
     <div class="form-group">
-      <label class="form-label">
-        Jenis
-      </label>
-
-      <select
-        class="form-select"
-        id="f-jenis"
-      >
-        ${jenis.map(j => `
-          <option
-            value="${j}"
-            ${j === p?.jenis ? "selected" : ""}
-          >
-            ${j}
-          </option>
-        `).join("")}
+      <label class="form-label">Jenis</label>
+      <select class="form-select" id="f-jenis">
+        ${jenis.map(j => `<option value="${j}" ${j === p?.jenis ? "selected" : ""}>${j}</option>`).join("")}
       </select>
     </div>
 
-    <!-- HARGA -->
     <div class="form-group">
-      <label class="form-label">
-        Harga (Rp) *
-      </label>
-
-      <input
-        class="form-input"
-        id="f-price"
-        type="number"
-        value="${p?.price ?? ""}"
-        placeholder="0"
-        min="0"
-      >
+      <label class="form-label">Harga (Rp) *</label>
+      <input class="form-input" id="f-price" type="number" value="${p?.price ?? ""}" placeholder="0" min="0">
     </div>
 
-    <!-- STOK -->
     <div class="form-group">
-      <label class="form-label">
-        Stok *
-      </label>
-
-      <input
-        class="form-input"
-        id="f-stock"
-        type="number"
-        value="${p?.stock ?? ""}"
-        placeholder="0"
-        min="0"
-      >
+      <label class="form-label">Stok *</label>
+      <input class="form-input" id="f-stock" type="number" value="${p?.stock ?? ""}" placeholder="0" min="0">
     </div>
 
-    <!-- SIZE -->
     <div class="form-group">
-      <label class="form-label">
-        Size / Varian
-      </label>
-
-      <input
-        class="form-input"
-        id="f-size"
-        type="text"
-        value="${escHtml(p?.size ?? "")}"
-        placeholder="M, L, XL, Free Size, 42, ..."
-      >
+      <label class="form-label">Size / Varian</label>
+      <input class="form-input" id="f-size" type="text" value="${escHtml(p?.size ?? "")}" placeholder="M, L, XL, Free Size, 42, ...">
     </div>
 
-    <!-- DISKON -->
     <div class="form-checkbox-row">
-
-      <input
-        type="checkbox"
-        id="f-hasDiscount"
-        ${p?.hasDiscount ? "checked" : ""}
-      >
-
-      <label for="f-hasDiscount">
-        Ada Diskon?
-      </label>
+      <input type="checkbox" id="f-hasDiscount" ${p?.hasDiscount ? "checked" : ""}>
+      <label for="f-hasDiscount">Ada Diskon?</label>
     </div>
 
-    <!-- PERSEN DISKON -->
-    <div
-      class="form-group"
-      id="discount-group"
-      style="${p?.hasDiscount ? "" : "display:none"}"
-    >
-      <label class="form-label">
-        Diskon (%)
-      </label>
-
-      <input
-        class="form-input"
-        id="f-discountPercent"
-        type="number"
-        value="${p?.discountPercent ?? ""}"
-        min="0"
-        max="100"
-        placeholder="0"
-      >
+    <div class="form-group" id="discount-group" style="${p?.hasDiscount ? "" : "display:none"}">
+      <label class="form-label">Diskon (%)</label>
+      <input class="form-input" id="f-discountPercent" type="number" value="${p?.discountPercent ?? ""}" min="0" max="100" placeholder="0">
     </div>
 
-    <!-- ACTION -->
     <div class="form-actions">
-
-      <button
-        class="btn btn-secondary"
-        id="form-cancel"
-      >
-        Batal
-      </button>
-
-      <button
-        class="btn btn-primary"
-        id="form-submit"
-      >
-        ${isEdit ? "Simpan" : "Tambah Produk"}
-      </button>
-
-    </div>
-  `;
+      <button class="btn btn-secondary" id="form-cancel">Batal</button>
+      <button class="btn btn-primary" id="form-submit">${isEdit ? "Simpan" : "Tambah Produk"}</button>
+    </div>`;
 }
-
-/* ───────────────────────────────────────────────────────────── */
 
 function openProductModal(p) {
+  showModal(p ? "Edit Produk" : "Tambah Produk Baru", productFormHTML(p));
 
-  showModal(
-    p
-      ? "Edit Produk"
-      : "Tambah Produk Baru",
+  document.getElementById("f-category").addEventListener("change", function() {
+    const jenis = JENIS_MAP[this.value] ?? [];
+    const sel = document.getElementById("f-jenis");
+    sel.innerHTML = jenis.map(j => `<option value="${j}">${j}</option>`).join("");
+  });
 
-    productFormHTML(p)
-  );
+  document.getElementById("f-hasDiscount").addEventListener("change", function() {
+    document.getElementById("discount-group").style.display = this.checked ? "" : "none";
+  });
 
-  /* CATEGORY CHANGE */
+  document.getElementById("form-cancel").addEventListener("click", closeModal);
 
-  document
-    .getElementById("f-category")
-    .addEventListener("change", function () {
+  document.getElementById("form-submit").addEventListener("click", async () => {
+    const data = {
+      name:            document.getElementById("f-name").value.trim(),
+      category:        document.getElementById("f-category").value,
+      jenis:           document.getElementById("f-jenis").value,
+      price:           Number(document.getElementById("f-price").value),
+      stock:           Number(document.getElementById("f-stock").value),
+      size:            document.getElementById("f-size").value.trim(),
+      hasDiscount:     document.getElementById("f-hasDiscount").checked,
+      discountPercent: Number(document.getElementById("f-discountPercent").value) || 0,
+    };
 
-      const jenis =
-        JENIS_MAP[this.value] ?? [];
+    const errEl = document.getElementById("form-error");
 
-      const sel =
-        document.getElementById("f-jenis");
+    // ── Validasi dengan pesan spesifik ──────────────────────────
+    if (!data.name) {
+      errEl.textContent = "⚠ Nama produk wajib diisi.";
+      errEl.style.display = "";
+      showToast("Nama produk wajib diisi.", "warning", "Field bertanda * tidak boleh kosong.");
+      return;
+    }
+    if (!data.price || data.price <= 0) {
+      errEl.textContent = "⚠ Harga harus lebih dari 0.";
+      errEl.style.display = "";
+      showToast("Harga tidak valid.", "warning", "Masukkan harga produk lebih dari Rp 0.");
+      return;
+    }
+    if (data.stock < 0) {
+      errEl.textContent = "⚠ Stok tidak valid.";
+      errEl.style.display = "";
+      showToast("Stok tidak valid.", "warning", "Stok tidak boleh bernilai negatif.");
+      return;
+    }
+    if (data.hasDiscount && (data.discountPercent <= 0 || data.discountPercent > 100)) {
+      errEl.textContent = "⚠ Diskon harus antara 1–100%.";
+      errEl.style.display = "";
+      showToast("Diskon tidak valid.", "warning", "Masukkan nilai diskon antara 1 sampai 100.");
+      return;
+    }
 
-      sel.innerHTML = jenis.map(j => `
-        <option value="${j}">
-          ${j}
-        </option>
-      `).join("");
-    });
+    errEl.style.display = "none";
 
-  /* DISCOUNT TOGGLE */
-
-  document
-    .getElementById("f-hasDiscount")
-    .addEventListener("change", function () {
-
-      document.getElementById(
-        "discount-group"
-      ).style.display = this.checked
-        ? ""
-        : "none";
-    });
-
-  /* CANCEL */
-
-  document
-    .getElementById("form-cancel")
-    .addEventListener("click", closeModal);
-
-  /* SUBMIT */
-
-  document
-    .getElementById("form-submit")
-    .addEventListener("click", async () => {
-
-      const data = {
-
-        name:
-          document
-            .getElementById("f-name")
-            .value
-            .trim(),
-
-        category:
-          document
-            .getElementById("f-category")
-            .value,
-
-        jenis:
-          document
-            .getElementById("f-jenis")
-            .value,
-
-        price:
-          Number(
-            document
-              .getElementById("f-price")
-              .value
-          ),
-
-        stock:
-          Number(
-            document
-              .getElementById("f-stock")
-              .value
-          ),
-
-        size:
-          document
-            .getElementById("f-size")
-            .value
-            .trim(),
-
-        hasDiscount:
-          document
-            .getElementById("f-hasDiscount")
-            .checked,
-
-        discountPercent:
-          Number(
-            document
-              .getElementById("f-discountPercent")
-              .value
-          ) || 0,
-      };
-
-      const errEl =
-        document.getElementById("form-error");
-
-      /* VALIDASI */
-
-      if (!data.name) {
-        errEl.textContent =
-          "Nama produk wajib diisi.";
-        errEl.style.display = "";
-        return;
-      }
-
-      if (!data.price || data.price <= 0) {
-        errEl.textContent =
-          "Harga harus lebih dari 0.";
-        errEl.style.display = "";
-        return;
-      }
-
-      if (!data.stock || data.stock < 0) {
-        errEl.textContent =
-          "Stok tidak valid.";
-        errEl.style.display = "";
-        return;
-      }
-
-      errEl.style.display = "none";
-
-      const btn =
-        document.getElementById("form-submit");
-
-      btn.classList.add("btn-loading");
-
-      try {
-
-        if (p) {
-
-          await productApi.update(
-            p.id,
-            data
-          );
-
-          showToast(
-            "Produk berhasil diupdate!"
-          );
-
-        } else {
-
-          await productApi.create(data);
-
-          showToast(
-            "Produk berhasil ditambahkan!"
-          );
-        }
-
+    const btn = document.getElementById("form-submit");
+    btn.classList.add("btn-loading");
+    try {
+      if (p) {
+        await productApi.update(p.id, data);
         closeModal();
-
         await refreshAll();
-
-      } catch (e) {
-
-        errEl.textContent = e.message;
-
-        errEl.style.display = "";
-
-      } finally {
-
-        btn.classList.remove("btn-loading");
+        showToast("Produk berhasil diupdate!", "success", `"${data.name}" sudah disimpan.`);
+      } else {
+        await productApi.create(data);
+        closeModal();
+        await refreshAll();
+        showToast("Produk berhasil ditambahkan!", "success", `"${data.name}" kini tersedia di katalog.`);
       }
-    });
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = "";
+      showToast("Gagal menyimpan produk.", "error", e.message);
+    } finally {
+      btn.classList.remove("btn-loading");
+    }
+  });
 }
 
-/* ───────────────────────────────────────────────────────────── */
-
 async function handleDeleteProduct(id) {
-
-  if (!confirm("Hapus produk ini?"))
-    return;
-
+  const prod = state.products.find(x => String(x.id) === String(id));
+  if (!confirm(`Hapus produk "${prod?.name ?? id}"?`)) return;
   try {
-
     await productApi.delete(id);
-
-    showToast("Produk dihapus.");
-
     await refreshAll();
-
+    showToast("Produk dihapus.", "error", `"${prod?.name ?? id}" telah dihapus dari sistem.`);
   } catch (e) {
-
-    showToast(e.message, "error");
+    showToast("Gagal menghapus produk.", "error", e.message);
   }
 }
 
@@ -848,14 +534,10 @@ async function handleDeleteProduct(id) {
 // TAB: MEMBER
 // ══════════════════════════════════════════════════════════════════
 function memberCardHTML(m) {
-  // ✅ Hitung dari state.transactions agar selalu sinkron
-  const memberTrx = state.transactions.filter(t =>
-    t.member && String(t.member.id) === String(m.id)
-  );
+  const memberTrx    = state.transactions.filter(t => t.member && String(t.member.id) === String(m.id));
   const totalTrx     = memberTrx.length;
   const totalBelanja = memberTrx.reduce((s, t) => s + (t.total ?? 0), 0);
 
-  // ✅ Tier dihitung dinamis dari total belanja
   const effectiveTier = totalBelanja >= 5_000_000 ? "PLUS" : m.tier;
 
   const prog = plusProgress(totalBelanja);
@@ -870,29 +552,28 @@ function memberCardHTML(m) {
         </div>
         ${badgeHTML(effectiveTier, effectiveTier === "PLUS" ? "orange" : "blue")}
       </div>
+
       <div class="member-info">
         <p>📞 ${escHtml(m.phone)}</p>
         <p>✉️ ${escHtml(m.email ?? "-")}</p>
         <p>🛒 ${totalTrx} transaksi</p>
         <p>💰 Total belanja: <span class="val">${formatRp(totalBelanja)}</span></p>
       </div>
+
       ${effectiveTier !== "PLUS" ? `
       <div>
-        <p class="progress-label">
-          Menuju PLUS: <span style="font-family:var(--font-mono);">${formatRp(sisa)}</span> lagi
-        </p>
+        <p class="progress-label">Menuju PLUS: <span style="font-family:var(--font-mono);">${formatRp(sisa)}</span> lagi</p>
         <div class="progress-bar">
           <div class="progress-fill" style="width:${prog}%"></div>
         </div>
       </div>` : `
-      <div style="margin: 0.5rem 0;">
-        <p class="progress-label" style="color:var(--accent);">
-          ✅ Member PLUS aktif · Diskon 15%
-        </p>
+      <div style="margin:0.5rem 0;">
+        <p class="progress-label" style="color:var(--accent);"> Member PLUS aktif · Diskon 15%</p>
         <div class="progress-bar">
           <div class="progress-fill" style="width:100%; background:var(--accent);"></div>
         </div>
       </div>`}
+
       <div class="member-actions">
         <button type="button" class="btn btn-secondary btn-sm" data-action="edit-member" data-id="${m.id}">Edit</button>
         <button type="button" class="btn btn-danger btn-sm" data-action="delete-member" data-id="${m.id}">Hapus</button>
@@ -915,12 +596,14 @@ function renderMembers() {
 
 function bindMembers() {
   document.getElementById("btn-add-member")?.addEventListener("click", () => openMemberModal(null));
+
   document.querySelectorAll("[data-action='edit-member']").forEach(btn => {
     btn.addEventListener("click", () => {
       const m = state.members.find(x => String(x.id) === btn.dataset.id);
       if (m) openMemberModal(m);
     });
   });
+
   document.querySelectorAll("[data-action='delete-member']").forEach(btn => {
     btn.addEventListener("click", () => handleDeleteMember(btn.dataset.id));
   });
@@ -930,25 +613,22 @@ function memberFormHTML(m) {
   const isEdit = !!m;
   return `
     <div id="form-error" class="form-error" style="display:none"></div>
+
     <div class="form-group">
       <label class="form-label">Nama *</label>
       <input class="form-input" id="f-name" type="text" value="${escHtml(m?.name ?? "")}" placeholder="Nama lengkap">
     </div>
+
     <div class="form-group">
       <label class="form-label">No. Telepon *</label>
       <input class="form-input" id="f-phone" type="text" value="${escHtml(m?.phone ?? "")}" placeholder="08xxxxxxxxxx">
     </div>
+
     <div class="form-group">
       <label class="form-label">Email</label>
       <input class="form-input" id="f-email" type="email" value="${escHtml(m?.email ?? "")}" placeholder="email@contoh.com">
     </div>
-    <div class="form-group">
-      <label class="form-label">Tier</label>
-      <select class="form-select" id="f-tier">
-        <option value="REGULAR" ${m?.tier === "REGULAR" ? "selected" : ""}>Regular (diskon 10%)</option>
-        <option value="PLUS" ${m?.tier === "PLUS" ? "selected" : ""}>Plus (diskon 15%)</option>
-      </select>
-    </div>
+
     <div class="form-actions">
       <button type="button" class="btn btn-secondary" id="form-cancel">Batal</button>
       <button type="button" class="btn btn-primary" id="form-submit">${isEdit ? "Simpan Perubahan" : "Daftar Member"}</button>
@@ -963,23 +643,51 @@ function openMemberModal(m) {
       name:  document.getElementById("f-name").value.trim(),
       phone: document.getElementById("f-phone").value.trim(),
       email: document.getElementById("f-email").value.trim(),
-      tier : document.getElementById("f-tier").value,
+      tier:  m?.tier ?? "REGULAR",
     };
+
     const errEl = document.getElementById("form-error");
-    if (!data.name)  { errEl.textContent = "Nama wajib diisi.";   errEl.style.display = ""; return; }
-    if (!data.phone) { errEl.textContent = "No. HP wajib diisi."; errEl.style.display = ""; return; }
-    if (!data.email) { errEl.textContent = "Email wajib diisi.";  errEl.style.display = ""; return; }
+
+    // ── Validasi member ─────────────────────────────────────────
+    if (!data.name) {
+      errEl.textContent = "⚠ Nama wajib diisi.";
+      errEl.style.display = "";
+      showToast("Nama member wajib diisi.", "warning", "Field bertanda * tidak boleh kosong.");
+      return;
+    }
+    if (!data.phone) {
+      errEl.textContent = "⚠ No. HP wajib diisi.";
+      errEl.style.display = "";
+      showToast("Nomor HP wajib diisi.", "warning", "Masukkan nomor telepon yang aktif.");
+      return;
+    }
+    if (!/^[0-9+\-\s]{8,15}$/.test(data.phone)) {
+      errEl.textContent = "⚠ Format nomor telepon tidak valid.";
+      errEl.style.display = "";
+      showToast("Format nomor HP tidak valid.", "warning", "Contoh: 08123456789");
+      return;
+    }
+
     errEl.style.display = "none";
 
     const btn = document.getElementById("form-submit");
     btn.classList.add("btn-loading");
     try {
-      if (m) { await memberApi.update(m.id, data); showToast("Member berhasil diupdate!"); }
-      else   { await memberApi.create(data);        showToast("Member berhasil didaftarkan!"); }
-      closeModal();
-      await refreshAll();
+      if (m) {
+        await memberApi.update(m.id, data);
+        closeModal();
+        await refreshAll();
+        showToast("Member berhasil diupdate!", "success", `Data ${data.name} sudah disimpan.`);
+      } else {
+        await memberApi.create(data);
+        closeModal();
+        await refreshAll();
+        showToast("Member berhasil didaftarkan!", "success", `${data.name} terdaftar sebagai member REGULAR.`);
+      }
     } catch (e) {
-      errEl.textContent = e.message; errEl.style.display = "";
+      errEl.textContent = e.message;
+      errEl.style.display = "";
+      showToast("Gagal menyimpan member.", "error", e.message);
     } finally {
       btn.classList.remove("btn-loading");
     }
@@ -987,9 +695,15 @@ function openMemberModal(m) {
 }
 
 async function handleDeleteMember(id) {
-  if (!confirm("Hapus member ini?")) return;
-  try { await memberApi.delete(id); showToast("Member dihapus."); await refreshAll(); }
-  catch (e) { showToast(e.message, "error"); }
+  const mem = state.members.find(x => String(x.id) === String(id));
+  if (!confirm(`Hapus member "${mem?.name ?? id}"?`)) return;
+  try {
+    await memberApi.delete(id);
+    await refreshAll();
+    showToast("Member dihapus.", "error", `${mem?.name ?? id} telah dihapus dari sistem.`);
+  } catch (e) {
+    showToast("Gagal menghapus member.", "error", e.message);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1001,6 +715,7 @@ function renderTransactions() {
     <section>
       <div class="page-header">
         <h2 class="page-title">RIWAYAT TRANSAKSI</h2>
+        <button type="button" class="btn btn-primary" id="btn-add-trx">+ Transaksi Baru</button>
       </div>
       ${sorted.length === 0 ? `<p class="empty">Belum ada transaksi.</p>` : `
         <div class="trx-list">
@@ -1032,6 +747,8 @@ function renderTransactions() {
 }
 
 function bindTransactions() {
+  document.getElementById("btn-add-trx")?.addEventListener("click", openTransactionModal);
+
   document.querySelectorAll("[data-action='view-struk']").forEach(btn => {
     btn.addEventListener("click", () => {
       const t = state.transactions.find(x => String(x.id) === btn.dataset.id);
@@ -1043,10 +760,11 @@ function bindTransactions() {
 // ── Struk Popup ───────────────────────────────────────────────────
 function showStruk(t) {
   const disc = t.member ? memberDiscountRate(t.member.tier) : 0;
-  const subtotal = (t.items ?? []).reduce((s, it) => {
-    const p = state.products.find(x => x.id === (it.productId ?? it.product?.id));
-    return s + (getFinalPrice(p ?? it.product ?? {}) * it.qty);
-  }, 0);
+
+  const subtotal = (t.items ?? []).reduce(
+    (s, it) => s + ((it.pricePerItem ?? 0) * it.qty),
+    0
+  );
   const discAmt = subtotal * disc;
 
   const body = `
@@ -1070,12 +788,12 @@ function showStruk(t) {
       <hr class="struk-divider dashed">
       <div class="struk-items">
         ${(t.items ?? []).map(it => {
-          const p = state.products.find(x => x.id === (it.productId ?? it.product?.id)) ?? it.product ?? {};
-          const price = getFinalPrice(p);
+          const itemName = it.productName ?? "?";
+          const price    = it.pricePerItem ?? 0;
           return `
             <div class="struk-item-row">
               <div class="struk-item-left">
-                <span class="struk-item-name">${escHtml(p.name ?? it.productName ?? "?")}</span>
+                <span class="struk-item-name">${escHtml(itemName)}</span>
                 <span class="struk-item-qty">×${it.qty}</span>
               </div>
               <span class="struk-item-val">${formatRp(price * it.qty)}</span>
@@ -1084,8 +802,15 @@ function showStruk(t) {
       </div>
       <hr class="struk-divider dashed">
       <div class="struk-calc">
-        <div class="struk-calc-row subtotal"><span>Subtotal</span><span>${formatRp(subtotal)}</span></div>
-        ${disc > 0 ? `<div class="struk-calc-row discount"><span>Diskon Member (${disc * 100}%)</span><span>-${formatRp(discAmt)}</span></div>` : ""}
+        <div class="struk-calc-row subtotal">
+          <span>Subtotal</span>
+          <span>${formatRp(subtotal)}</span>
+        </div>
+        ${disc > 0 ? `
+        <div class="struk-calc-row discount">
+          <span>Diskon Member (${disc * 100}%)</span>
+          <span>-${formatRp(discAmt)}</span>
+        </div>` : ""}
       </div>
       <hr class="struk-divider">
       <div class="struk-total-row">
@@ -1097,17 +822,9 @@ function showStruk(t) {
   showModal("🧾 STRUK PEMBAYARAN", body);
 }
 
-// ══════════════════════════════════════════════════════════════════
-// TRANSACTION MODAL
-// ══════════════════════════════════════════════════════════════════
+// ── Transaction Modal ─────────────────────────────────────────────
 function trxCartHTML() {
-  // ✅ Hitung tier efektif dari riwayat belanja
-  const memberTrx = state.trxMember
-    ? state.transactions.filter(t => t.member && String(t.member.id) === String(state.trxMember.id))
-    : [];
-  const totalBelanjaSekarang = memberTrx.reduce((s, t) => s + (t.total ?? 0), 0);
-  const effectiveTier = totalBelanjaSekarang >= 5_000_000 ? "PLUS" : (state.trxMember?.tier ?? "");
-  const disc = state.trxMember ? memberDiscountRate(effectiveTier) : 0;
+  const disc     = state.trxMember ? memberDiscountRate(state.trxMember.tier) : 0;
   const subtotal = state.trxCart.reduce((s, it) => s + (getFinalPrice(it.product) * it.qty), 0);
   const discAmt  = subtotal * disc;
   const total    = subtotal - discAmt;
@@ -1129,8 +846,15 @@ function trxCartHTML() {
             </div>
           </div>`).join("")}
         <div class="cart-summary">
-          <div class="summary-row"><span>Subtotal</span><span style="font-family:var(--font-mono)">${formatRp(subtotal)}</span></div>
-          ${disc > 0 ? `<div class="summary-row discount"><span>Diskon Member (${disc*100}%)</span><span style="font-family:var(--font-mono)">-${formatRp(discAmt)}</span></div>` : ""}
+          <div class="summary-row">
+            <span>Subtotal</span>
+            <span style="font-family: var(--font-mono);">${formatRp(subtotal)}</span>
+          </div>
+          ${disc > 0 ? `
+          <div class="summary-row discount">
+            <span>Diskon Member (${disc * 100}%)</span>
+            <span style="font-family: var(--font-mono);">-${formatRp(discAmt)}</span>
+          </div>` : ""}
           <div class="summary-total">
             <span class="summary-total-label">TOTAL</span>
             <span class="summary-total-val">${formatRp(total)}</span>
@@ -1148,7 +872,10 @@ function renderTrxModalBody() {
         <div class="product-pick-item">
           <div>
             <p class="product-pick-name">${escHtml(p.name)}</p>
-            <p class="product-pick-price">${formatRp(getFinalPrice(p))}<span class="product-pick-stok"> · Stok: ${p.stock}</span></p>
+            <p class="product-pick-price">
+              ${formatRp(getFinalPrice(p))}
+              <span class="product-pick-stok"> · Stok: ${p.stock}</span>
+            </p>
           </div>
           <button type="button" class="btn btn-primary btn-sm" data-action="pick-product" data-id="${p.id}" ${inCart ? "disabled" : ""}>
             + Tambah
@@ -1156,52 +883,60 @@ function renderTrxModalBody() {
         </div>`;
     }).join("");
 
+  const suggestList = (!state.trxMember && state.trxMemberPhone.length > 0)
+    ? (() => {
+        const hasil = state.members.filter(m =>
+          m.phone.includes(state.trxMemberPhone) ||
+          m.name.toLowerCase().includes(state.trxMemberPhone.toLowerCase())
+        );
+        return hasil.length > 0 ? `
+          <div class="member-suggest-list">
+            ${hasil.map(m => `
+              <button class="member-suggest-item" type="button" data-action="select-member" data-id="${m.id}">
+                <span class="suggest-phone">${escHtml(m.phone)}</span>
+                <span class="suggest-name"><strong>${escHtml(m.name)}</strong> · ${m.tier}</span>
+              </button>`).join("")}
+          </div>` : `<p style="font-size:12px;color:var(--text-muted);padding:0.4rem 0">Member tidak ditemukan.</p>`;
+      })()
+    : "";
+
   const memberSection = `
-    <div class="trx-member-block">
-      <label class="member-question-label" for="is-member-chk">Apakah pelanggan ini terdaftar sebagai member?</label>
-      <div class="member-question-row">
-        <input type="checkbox" id="is-member-chk" class="member-chk" ${state.trxUseMember ? "checked" : ""}>
-        <span class="member-chk-text">Ya, pelanggan ini adalah member</span>
-      </div>
+      <div class="trx-member-block">
+        <label class="member-question-label" for="is-member-chk">Apakah pelanggan ini terdaftar sebagai member?</label>
+        <div class="member-question-row">
+          <input type="checkbox" id="is-member-chk" class="member-chk" ${state.trxUseMember ? "checked" : ""}>
+          <span class="member-chk-text">Ya, pelanggan ini adalah member</span>
+        </div>
 
-      ${state.trxUseMember && !state.trxMember ? `
-        <div class="member-search-wrap" style="position:relative">
-          <div class="member-search-field">
-            <span class="member-search-icon">📞</span>
-            <input class="member-search-input" id="trx-phone-input"
-              placeholder="Ketik nomor telepon atau nama member..."
-              value="${escHtml(state.trxMemberPhone)}">
-          </div>
-          ${state.trxMemberPhone.length > 0 ? `
-            <div class="member-suggest-list">
-              ${state.members
-                .filter(m => m.phone.includes(state.trxMemberPhone) || m.name.toLowerCase().includes(state.trxMemberPhone.toLowerCase()))
-                .map(m => `
-                  <button class="member-suggest-item" type="button" data-action="select-member" data-id="${m.id}">
-                    <span class="suggest-phone">${escHtml(m.phone)}</span>
-                    <span class="suggest-name"><strong>${escHtml(m.name)}</strong> · ${m.tier}</span>
-                  </button>`).join("")
-              }
-            </div>` : ""}
+        ${state.trxUseMember ? `
+        <div class="member-search-wrap" style="position:relative; margin-top:0.75rem;">
+          ${!state.trxMember ? `
+            <div class="member-search-field">
+              <span class="member-search-icon">📞</span>
+              <input class="member-search-input" id="trx-phone-input"
+                placeholder="Ketik nomor telepon atau nama member..."
+                value="${escHtml(state.trxMemberPhone)}">
+            </div>
+            ${suggestList}
+          ` : `
+            <div class="member-status found">
+              <span class="member-status-icon">✅</span>
+              <div>
+                <span>Member terpilih: <strong class="member-status-name">${escHtml(state.trxMember.name)}</strong></span>
+                <span class="member-status-tier"> · ${state.trxMember.tier} (diskon ${memberDiscountRate(state.trxMember.tier) * 100}%)</span>
+              </div>
+              <button type="button" style="margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; line-height:1; padding:0 4px;" data-action="clear-member">×</button>
+            </div>
+          `}
         </div>` : ""}
-
-      ${state.trxMember ? `
-        <div class="member-status found" style="margin-top:0.6rem">
-          <span class="member-status-icon">✅</span>
-          <div>
-            <span class="member-status-name">${escHtml(state.trxMember.name)}</span>
-            <span class="member-status-tier"> — Tier <strong>${state.trxMember.tier}</strong> · Diskon ${memberDiscountRate(state.trxMember.tier)*100}%</span>
-          </div>
-          <button type="button" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px" data-action="clear-member">×</button>
-        </div>` : ""}
-    </div>`;
+      </div>`;
 
   return `
     <div class="trx-form">
       <div class="trx-block">
         <p class="trx-block-title">Pilih Produk</p>
         <div class="product-pick-list">
-          ${productList || '<p style="padding:10px;color:var(--text-muted)">Stok habis.</p>'}
+          ${productList || '<p style="padding:10px; color:var(--text-muted)">Stok habis.</p>'}
         </div>
       </div>
 
@@ -1225,19 +960,23 @@ function bindTrxModal() {
     el.addEventListener("click", () => {
       const p = state.products.find(x => String(x.id) === el.dataset.id);
       if (!p) return;
-      const existing = state.trxCart.find(it => it.product.id === p.id);
-      if (!existing) state.trxCart.push({ product: p, qty: 1 });
+      if (!state.trxCart.find(it => it.product.id === p.id))
+        state.trxCart.push({ product: p, qty: 1 });
       refreshTrxModal();
     });
   });
 
   document.querySelectorAll("[data-cart-action]").forEach(btn => {
     btn.addEventListener("click", () => {
-      const idx = Number(btn.dataset.idx);
+      const idx    = Number(btn.dataset.idx);
       const action = btn.dataset.cartAction;
       if (action === "inc") {
         const it = state.trxCart[idx];
-        if (it.qty < it.product.stock) it.qty++;
+        if (it.qty < it.product.stock) {
+          it.qty++;
+        } else {
+          showToast("Stok tidak mencukupi.", "warning", `Maksimal ${it.product.stock} unit untuk produk ini.`);
+        }
       } else if (action === "dec") {
         if (state.trxCart[idx].qty > 1) state.trxCart[idx].qty--;
         else state.trxCart.splice(idx, 1);
@@ -1250,19 +989,33 @@ function bindTrxModal() {
 
   document.getElementById("is-member-chk")?.addEventListener("change", function() {
     state.trxUseMember = this.checked;
-    if (!this.checked) { state.trxMember = null; state.trxMemberPhone = ""; }
+    if (!this.checked) {
+      state.trxMember = null;
+      state.trxMemberPhone = "";
+    }
     refreshTrxModal();
   });
 
   document.querySelectorAll("[data-action='select-member']").forEach(btn => {
     btn.addEventListener("click", () => {
       const m = state.members.find(x => String(x.id) === btn.dataset.id);
-      if (m) { state.trxMember = m; state.trxMemberPhone = m.phone; refreshTrxModal(); }
+      if (m) {
+        state.trxMember = m;
+        state.trxMemberPhone = m.phone;
+        state.trxUseMember = true;
+        const chk = document.getElementById("is-member-chk");
+        if (chk) chk.checked = true;
+        refreshTrxModal();
+        showToast("Member terpilih.", "info", `${m.name} · ${m.tier} (diskon ${memberDiscountRate(m.tier) * 100}%)`);
+      }
     });
   });
 
   document.querySelector("[data-action='clear-member']")?.addEventListener("click", () => {
-    state.trxMember = null; state.trxMemberPhone = ""; refreshTrxModal();
+    state.trxMember = null;
+    state.trxMemberPhone = "";
+    state.trxUseMember = false;
+    refreshTrxModal();
   });
 
   let memberSearchTimer = null;
@@ -1279,8 +1032,19 @@ function bindTrxModal() {
 function refreshTrxModal() {
   const body = document.querySelector("#modal-container .modal-body");
   if (!body) return;
+
+  const input    = document.getElementById("trx-phone-input");
+  const selStart = input?.selectionStart;
+  const selEnd   = input?.selectionEnd;
+
   body.innerHTML = renderTrxModalBody();
   bindTrxModal();
+
+  const newInput = document.getElementById("trx-phone-input");
+  if (newInput && selStart !== undefined) {
+    newInput.focus();
+    newInput.setSelectionRange(selStart, selEnd);
+  }
 }
 
 function openTransactionModal() {
@@ -1293,6 +1057,12 @@ function openTransactionModal() {
 }
 
 async function handleCheckout() {
+  // Validasi cart kosong
+  if (state.trxCart.length === 0) {
+    showToast("Keranjang masih kosong.", "warning", "Tambahkan minimal satu produk sebelum checkout.");
+    return;
+  }
+
   const btn = document.getElementById("btn-checkout");
   if (btn) { btn.classList.add("btn-loading"); btn.textContent = "Memproses..."; }
 
@@ -1305,11 +1075,10 @@ async function handleCheckout() {
     const result = await transactionApi.create(payload);
     closeModal();
     await refreshAll();
-    showToast("Transaksi berhasil!");
-    // ✅ Tampilkan struk otomatis setelah checkout
+    showToast("Transaksi berhasil!", "success", "Struk pembayaran siap ditampilkan.");
     if (result) setTimeout(() => showStruk(result), 200);
   } catch (e) {
-    showToast(e.message, "error");
+    showToast("Transaksi gagal.", "error", e.message);
     if (btn) { btn.classList.remove("btn-loading"); btn.innerHTML = "🏁 Checkout"; }
   }
 }
@@ -1317,7 +1086,10 @@ async function handleCheckout() {
 // ══════════════════════════════════════════════════════════════════
 // GLOBAL
 // ══════════════════════════════════════════════════════════════════
-window.retryConnect = async function() { await refreshAll(); };
+window.retryConnect = async function() {
+  showToast("Mencoba terhubung ulang...", "info", "Menghubungi server Java di port 8080.");
+  await refreshAll();
+};
 
 // ══════════════════════════════════════════════════════════════════
 // INIT

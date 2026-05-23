@@ -1,12 +1,9 @@
 package service;
-
 import models.*;
 import repository.ProductRepository;
 import repository.TransactionRepository;
-
 import java.util.List;
 import java.util.Optional;
-
 
 public class TransactionService {
 

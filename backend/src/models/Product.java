@@ -1,8 +1,6 @@
 package models;
 
-// Tambahkan implements Discountable di kelas induk
 public abstract class Product implements Discountable {
-
     private String  id;
     private String  name;
     private double  price;
@@ -11,7 +9,6 @@ public abstract class Product implements Discountable {
     private boolean hasDiscount;
     private double  discountPercent;
 
-    // ID tidak lagi digenerate manual di sini karena sudah diurus Database
     public Product(String name, double price, int stock,
                    String size, boolean hasDiscount, double discountPercent) {
         this.id              = null;
@@ -22,23 +19,19 @@ public abstract class Product implements Discountable {
         this.hasDiscount     = hasDiscount;
         this.discountPercent = hasDiscount ? discountPercent : 0.0;
     }
-
     public abstract String getCategory();
     public abstract String getJenis();
-
     public double getFinalPrice() {
-        if (hasDiscount) return price * (1 - discountPercent / 100);
+        if (hasDiscount) {
+            return price - (price * discountPercent / 100.0);
+        }
         return price;
     }
-
     public String getStatusStok() {
         if (stock == 0)  return "HABIS";
         if (stock <= 5)  return "MENIPIS";
         return "TERSEDIA";
     }
-
-    // --- IMPLEMENTASI DARI MODUL PBO (Prinsip DRY & Inheritance) ---
-    // Sekarang kelima subclass turunan tidak perlu lagi menulis ulang method ini
     @Override
     public double calculateMemberDiscount(String memberTier) {
         double base = getFinalPrice();
@@ -46,14 +39,12 @@ public abstract class Product implements Discountable {
         if ("REGULAR".equals(memberTier)) return base * (1 - Discountable.MEMBER_DISCOUNT / 100);
         return base;
     }
-
     @Override
     public String getDiscountLabel() {
         if (!isHasDiscount()) return "Tidak ada diskon produk";
         return String.format("Diskon %.0f%% (Harga asli: Rp %,.0f)", getDiscountPercent(), getPrice());
     }
-
-    // --- GETTER & SETTER ---
+    // GETTER & SETTER
     public String getId()    { return id; }
     public void setId(String id) { this.id = id; }
     public String getName()  { return name; }
