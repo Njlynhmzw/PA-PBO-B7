@@ -52,7 +52,7 @@ public class Transaction {
         this.totalAfterDiscount  = after;
     }
     public String               getTransactionId()           { return transactionId; }
-    public void                 setTransactionId(String id)  { this.transactionId = id; } // ✅
+    public void                 setTransactionId(String id)  { this.transactionId = id; } 
     public LocalDateTime        getDateTime()                { return dateTime; }
     public Member               getMember()                  { return member; }
     public void                 setMember(Member m)          { this.member = m; }
